@@ -2,40 +2,65 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Stock Scanner V1</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Scanner</title>
     <style>
-        body { font-family: Arial, sans-serif; padding: 10px; }
-        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-        th { background-color: #f2f2f2; }
-        button { padding: 10px 20px; margin: 5px; background-color: #4CAF50; color: white; border: none; cursor: pointer; }
-        button:hover { background-color: #45a049; }
-        .error { color: red; }
+        body {
+            font-family: Arial, sans-serif;
+            padding: 10px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
         @media (max-width: 600px) {
-            table, thead, tbody, th, td, tr { display: block; }
-            th { position: absolute; top: -9999px; left: -9999px; }
-            tr { border: 1px solid #ccc; margin-bottom: 10px; }
-            td { border: none; position: relative; padding-left: 50%; }
-            td:before { position: absolute; left: 6px; content: attr(data-label); font-weight: bold; }
+            table, thead, tbody, th, td, tr {
+                display: block;
+            }
+            th {
+                position: absolute;
+                top: -9999px;
+                left: -9999px;
+            }
+            tr {
+                border: 1px solid #ccc;
+                margin-bottom: 10px;
+            }
+            td {
+                border: none;
+                position: relative;
+                padding-left: 50%;
+            }
+            td:before {
+                position: absolute;
+                left: 6px;
+                content: attr(data-label);
+                font-weight: bold;
+            }
         }
     </style>
 </head>
 <body>
-    <h1>Stock Scanner V1</h1>
-    <button id="startBtn">Start Scanner</button>
-    <button id="pauseBtn" style="display:none;">Pause Scanner</button>
+    <h1>Stock Scanner</h1>
     <table id="stockTable">
         <thead>
             <tr>
                 <th>Symbol</th>
                 <th>% Change</th>
-                <th>Category</th>
                 <th>News Headline</th>
             </tr>
         </thead>
         <tbody id="tableBody">
-            <tr><td colspan="4" class="error">Scanner not started. Click 'Start' to begin.</td></tr>
+            <tr><td colspan="3">Loading...</td></tr>
         </tbody>
     </table>
     <p>Master list last updated: <span id="masterTime">Never</span></p>
@@ -43,201 +68,128 @@
     <p>Tiingo news last updated: <span id="tiingoTime">Never</span></p>
 
     <script>
-        const finnhubKey = "cv9nin9r01qpd9s89t80cv9nin9r01qpd9s89t8g";
-        const tiingoKey = "f69a911d466dacc71482ee05dd94f54956c40383";
-        let masterList = [
-            "AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "META", "NVDA", "JPM", "JNJ", "V",
-            "PG", "UNH", "DIS", "MA", "PYPL", "HD", "VZ", "ADBE", "NFLX", "CMCSA",
-            "PFE", "KO", "PEP", "INTC", "CSCO", "ABT", "T", "CRM", "MRK", "XOM",
-            "WMT", "NKE", "LLY", "TMO", "ACN", "AVGO", "COST", "DHR", "MDT", "NEE",
-            "TXN", "HON", "UPS", "LIN", "PM", "BMY", "QCOM", "AMD", "AMGN", "SBUX",
-            "RKLB", "IONQ", "LUNR", "RGTI", "PL", "PLTR", "RDW", "HOOD", "SQ", "SNAP",
-            "ZM", "UBER", "LYFT", "SPOT", "SHOP", "ROKU", "PINS", "ETSY", "DKNG", "DOCU",
-            "TWLO", "OKTA", "ZS", "CRWD", "NET", "DDOG", "TEAM", "U", "PATH", "ASAN",
-            "MDB", "SNOW", "COIN", "AFRM", "SOFI", "RIVN", "LCID", "NIO", "XPEV", "LI",
-            "F", "GM", "TM", "HMC", "STLA", "RACE", "VWAGY", "BMWYY", "DDAIF", "HYMTF"
+        // Replace these with your actual API keys
+        const finnhubKey = "your_finnhub_api_key_here";
+        const tiingoKey = "your_tiingo_api_key_here";
+
+        // List of 25 diverse stocks across sectors
+        const masterList = [
+            "AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", // Tech
+            "JPM", "V", "MA", "PYPL", // Finance
+            "JNJ", "UNH", "PFE", "ABT", // Healthcare
+            "PG", "KO", "PEP", // Consumer Goods
+            "DIS", "NFLX", "CMCSA", // Media
+            "HD", "VZ", // Retail/Telecom
+            "ADBE", "INTC", "CSCO", "T" // Software/Telecom
         ];
-        let bucketList = [];
-        let stockCategories = {};
+
+        let masterQuotes = [];
         let tiingoNewsCache = {};
-        let masterInterval, scannerInterval, tiingoInterval;
 
-        const tableBody = document.getElementById('tableBody');
-        const startBtn = document.getElementById('startBtn');
-        const pauseBtn = document.getElementById('pauseBtn');
-
-        // Finnhub API Functions
-        async function fetchFinnhubProfile(symbol) {
-            const url = `https://finnhub.io/api/v1/stock/profile2?symbol=${symbol}&token=${finnhubKey}`;
+        // Helper function to fetch data with a delay
+        async function fetchWithDelay(url, delayMs) {
             try {
                 const response = await fetch(url);
-                if (!response.ok) throw new Error(`Finnhub profile error for ${symbol}`);
-                return await response.json();
+                if (!response.ok) {
+                    console.error(`Fetch error: ${response.status}`);
+                    return null;
+                }
+                const data = await response.json();
+                await new Promise(resolve => setTimeout(resolve, delayMs));
+                return data;
             } catch (error) {
-                console.error(error);
+                console.error(`Error fetching ${url}:`, error);
                 return null;
             }
         }
 
-        function getCategory(marketCap) {
-            if (marketCap > 200000000000) return "Mega-Cap";
-            if (marketCap > 10000000000) return "Large-Cap";
-            if (marketCap > 2000000000) return "Mid-Cap";
-            return "Small-Cap";
-        }
-
-        async function fetchFinnhubQuote(symbol) {
-            const url = `https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${finnhubKey}`;
-            try {
-                const response = await fetch(url);
-                if (!response.ok) throw new Error(`Finnhub quote error for ${symbol}`);
-                return await response.json();
-            } catch (error) {
-                console.error(error);
-                return null;
+        // Update master list every 10 minutes with Finnhub quotes
+        async function updateMasterList() {
+            masterQuotes = [];
+            for (const symbol of masterList) {
+                const quote = await fetchWithDelay(
+                    `https://finnhub.io/api/v1/quote?symbol=${symbol}&token=${finnhubKey}`,
+                    5000 // 5-second delay
+                );
+                if (quote) {
+                    masterQuotes.push({ symbol, ...quote });
+                }
             }
+            document.getElementById('masterTime').textContent = new Date().toLocaleTimeString();
+            console.log("Master list updated");
         }
 
-        async function fetchFinnhubQuotes(symbols) {
-            const quotes = {};
-            for (const symbol of symbols) {
-                quotes[symbol] = await fetchFinnhubQuote(symbol);
-                await new Promise(resolve => setTimeout(resolve, 1000)); // 1-second delay
+        // Update scanner every 3 minutes, showing top 5 stocks with news
+        async function updateScanner() {
+            if (masterQuotes.length === 0) {
+                console.log("Master list is empty, skipping scanner update");
+                return;
             }
-            return quotes;
-        }
-
-        async function fetchFinnhubNews(symbol) {
-            const today = new Date().toISOString().split('T')[0];
-            const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
-            const url = `https://finnhub.io/api/v1/company-news?symbol=${symbol}&from=${yesterday}&to=${today}&token=${finnhubKey}`;
-            try {
-                const response = await fetch(url);
-                if (!response.ok) throw new Error(`Finnhub news error for ${symbol}`);
-                return await response.json();
-            } catch (error) {
-                console.error(error);
-                return [];
+            const results = [];
+            for (const quote of masterQuotes) {
+                const symbol = quote.symbol;
+                const news = await fetchWithDelay(
+                    `https://finnhub.io/api/v1/company-news?symbol=${symbol}&from=${new Date(Date.now() - 24*60*60*1000).toISOString().split('T')[0]}&to=${new Date().toISOString().split('T')[0]}&token=${finnhubKey}`,
+                    1000 // 1-second delay
+                );
+                if (news && news.length > 0) {
+                    results.push({ symbol, quote, news: news[0] });
+                }
             }
+            // Sort by % change and select top 5
+            const top5 = results
+                .sort((a, b) => ((b.quote.c - b.quote.pc) / b.quote.pc) - ((a.quote.c - a.quote.pc) / a.quote.pc))
+                .slice(0, 5);
+            renderTable(top5);
+            document.getElementById('scannerTime').textContent = new Date().toLocaleTimeString();
+            console.log("Scanner updated");
         }
 
-        // Tiingo API Functions
-        async function fetchTiingoNews(symbol) {
-            const url = `https://api.tiingo.com/tiingo/daily/${symbol}/news?token=${tiingoKey}`;
-            try {
-                const response = await fetch(url);
-                if (!response.ok) throw new Error(`Tiingo news error for ${symbol}`);
-                return await response.json();
-            } catch (error) {
-                console.error(error);
-                return [];
-            }
-        }
-
+        // Update Tiingo news every hour
         async function updateTiingoNews() {
             for (const symbol of masterList) {
-                const news = await fetchTiingoNews(symbol);
-                tiingoNewsCache[symbol] = news.length > 0 ? news[0].title : "No Tiingo news";
-                await new Promise(resolve => setTimeout(resolve, 1000)); // 1-second delay
+                const data = await fetchWithDelay(
+                    `https://api.tiingo.com/tiingo/news?tickers=${symbol}&token=${tiingoKey}`,
+                    5000 // 5-second delay
+                );
+                if (data && data.length > 0) {
+                    tiingoNewsCache[symbol] = data[0].title;
+                } else {
+                    tiingoNewsCache[symbol] = "No Tiingo news";
+                }
             }
             document.getElementById('tiingoTime').textContent = new Date().toLocaleTimeString();
             console.log("Tiingo news updated");
         }
 
-        // Core Scanner Functions
-        async function updateMasterList() {
-            // Placeholder for dynamic updates (manual for now due to API limits)
-            console.log("Master list updated (static for now)");
-        }
-
-        async function updateBucketList() {
-            const quotes = await fetchFinnhubQuotes(masterList);
-            const profiles = await Promise.all(masterList.map(symbol => fetchFinnhubProfile(symbol)));
-            stockCategories = {};
-            profiles.forEach((profile, index) => {
-                if (profile && profile.marketCapitalization) {
-                    stockCategories[masterList[index]] = getCategory(profile.marketCapitalization * 1000000);
-                }
-            });
-            bucketList = selectTopN(quotes, 25);
-            document.getElementById('masterTime').textContent = new Date().toLocaleTimeString();
-            console.log("Bucket list updated");
-        }
-
-        function selectTopN(quotes, n) {
-            const validQuotes = Object.entries(quotes).filter(([_, data]) => data && data.dp != null && data.dp < 5); // Exclude overbought
-            validQuotes.sort((a, b) => b[1].dp - a[1].dp);
-            return validQuotes.slice(0, n).map(([symbol]) => symbol);
-        }
-
-        async function updateScanner() {
-            if (!bucketList.length) {
-                tableBody.innerHTML = '<tr><td colspan="4" class="error">No stocks in bucket list. Fetching master list...</td></tr>';
-                await updateBucketList();
-                if (!bucketList.length) return;
-            }
-            const quotes = await fetchFinnhubQuotes(bucketList);
-            const finnhubNewsPromises = bucketList.map(symbol => fetchFinnhubNews(symbol));
-            const finnhubNewsList = await Promise.all(finnhubNewsPromises);
-            const candidates = bucketList.filter((symbol, index) => {
-                const hasFinnhubNews = finnhubNewsList[index].length > 0;
-                const hasTiingoNews = tiingoNewsCache[symbol] && tiingoNewsCache[symbol] !== "No Tiingo news";
-                return hasFinnhubNews || hasTiingoNews;
-            });
-            const top5 = selectTopN(quotes, 5).filter(symbol => candidates.includes(symbol));
-            renderTable(top5, quotes, finnhubNewsList);
-            document.getElementById('scannerTime').textContent = new Date().toLocaleTimeString();
-            console.log("Scanner updated");
-        }
-
-        function renderTable(top5, quotes, finnhubNewsList) {
+        // Render the table with top 5 stocks
+        function renderTable(top5) {
+            const tableBody = document.getElementById('tableBody');
             tableBody.innerHTML = '';
             if (top5.length === 0) {
-                tableBody.innerHTML = '<tr><td colspan="4" class="error">No stocks with recent news found.</td></tr>';
+                tableBody.innerHTML = '<tr><td colspan="3">No stocks with recent news found.</td></tr>';
                 return;
             }
-            top5.forEach(symbol => {
-                const quote = quotes[symbol];
-                const finnhubNews = finnhubNewsList[bucketList.indexOf(symbol)];
-                const headline = finnhubNews.length > 0 ? finnhubNews[0].headline : (tiingoNewsCache[symbol] || "No recent news");
-                const category = stockCategories[symbol] || "Unknown";
+            top5.forEach(item => {
+                const symbol = item.symbol;
+                const percentChange = ((item.quote.c - item.quote.pc) / item.quote.pc * 100).toFixed(2);
+                const headline = item.news.headline || tiingoNewsCache[symbol] || "No recent news";
                 const row = `<tr>
                     <td data-label="Symbol">${symbol}</td>
-                    <td data-label="% Change">${quote.dp.toFixed(2)}%</td>
-                    <td data-label="Category">${category}</td>
+                    <td data-label="% Change">${percentChange}%</td>
                     <td data-label="News Headline">${headline}</td>
                 </tr>`;
                 tableBody.innerHTML += row;
             });
         }
 
-        // Start Scanner
-        startBtn.addEventListener('click', async () => {
-            console.log('Starting scanner...');
-            startBtn.style.display = 'none';
-            pauseBtn.style.display = 'inline-block';
-            tableBody.innerHTML = '<tr><td colspan="4">Loading...</td></tr>';
-            await updateBucketList();
-            await updateScanner();
-            await updateTiingoNews();
-            masterInterval = setInterval(updateBucketList, 5 * 60 * 1000); // Every 5 minutes
-            scannerInterval = setInterval(updateScanner, 2 * 60 * 1000);   // Every 2 minutes
-            tiingoInterval = setInterval(updateTiingoNews, 60 * 60 * 1000); // Every hour
-        });
+        // Initial load
+        updateMasterList().then(updateScanner).then(updateTiingoNews);
 
-        // Pause Scanner
-        pauseBtn.addEventListener('click', () => {
-            console.log('Pausing scanner...');
-            clearInterval(masterInterval);
-            clearInterval(scannerInterval);
-            clearInterval(tiingoInterval);
-            masterInterval = null;
-            scannerInterval = null;
-            tiingoInterval = null;
-            startBtn.style.display = 'inline-block';
-            pauseBtn.style.display = 'none';
-            tableBody.innerHTML = '<tr><td colspan="4" class="error">Scanner paused. Click "Start" to resume.</td></tr>';
-        });
+        // Set intervals for periodic updates
+        setInterval(updateMasterList, 10 * 60 * 1000); // Every 10 minutes
+        setInterval(updateScanner, 3 * 60 * 1000);     // Every 3 minutes
+        setInterval(updateTiingoNews, 60 * 60 * 1000); // Every hour
     </script>
 </body>
 </html>
