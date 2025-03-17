@@ -30,9 +30,8 @@
       text-align: left;
     }
     th {
- background-color: #4CAF50; /* Same green as toggle button */
- color: #ffffff;            /* White text for contrast */
-}
+      background-color: #4CAF50; /* Same green as toggle button */
+      color: #ffffff; /* White text for contrast */
     }
     button {
       padding: 10px 20px;
@@ -53,6 +52,9 @@
     }
     #futuresTracker {
       margin-bottom: 20px;
+    }
+    #status {
+      margin-bottom: 10px;
     }
     @media (max-width: 600px) {
       table, thead, tbody, th, td, tr {
@@ -88,12 +90,13 @@
     <p>Dow: <span id="YM-change">Loading...</span></p>
     <p>S&P 500: <span id="ES-change">Loading...</span></p>
     <p>NASDAQ: <span id="NQ-change">Loading...</span></p>
-    <p>VIX: <span id="VIX-change">Loading...</span></p>
+    <p>VIX: <span id="VX-change">Loading...</span></p>
     <p>Russell 2000: <span id="RTY-change">Loading...</span></p>
   </div>
   <button id="startBtn">Start Scanner</button>
   <button id="pauseBtn" style="display:none;">Pause Scanner</button>
   <button id="darkModeToggle">Toggle Dark Mode</button>
+  <p id="status"></p>
   <p id="timer">Scanner not running</p>
   <table id="stockTable">
     <thead>
@@ -119,44 +122,30 @@
   <script>
     // Constants for delays and refresh intervals
     const API_DELAY_MS = 5000;
-    const SCANNER_REFRESH_MS = 30000;
-    const BUCKET_REFRESH_MS = 2 * 60 * 1000;
-    const FUTURES_REFRESH_MS = 5 * 60 * 1000;
+    const SCANNER_REFRESH_MS = 30000; // Top 5 dashboard every 30 seconds
+    const BUCKET_REFRESH_MS = 60 * 1000; // Bucket list every 1 minute
+    const MASTER_REFRESH_MS = 2 * 60 * 1000; // Master list every 2 minutes
+    const FUTURES_REFRESH_MS = 5 * 60 * 1000; // Futures every 5 minutes
 
-    // API keys: FinHub (free) and Tiingo (prompted at runtime)
+    // API keys: Finnhub (free) and Tiingo (prompted at runtime)
     const finnhubKey = "cvab5chr01qshflh8ih0cvab5chr01qshflh8ihg";
     let tiingoKey = "";
 
-    // Master list of 200 stocks (mid-cap and large-cap)
+    // Static list of 50 stocks (mid-cap and large-cap) to simulate top gainers
     const potentialStocks = [
       "AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "META", "NVDA", "JPM", "JNJ", "V",
       "PG", "UNH", "DIS", "MA", "PYPL", "HD", "VZ", "ADBE", "NFLX", "CMCSA",
       "PFE", "KO", "PEP", "INTC", "CSCO", "ABT", "T", "CRM", "MRK", "XOM",
       "WMT", "NKE", "LLY", "TMO", "ACN", "AVGO", "COST", "DHR", "MDT", "NEE",
-      "TXN", "HON", "UPS", "LIN", "PM", "BMY", "QCOM", "AMD", "AMGN", "SBUX",
-      "RKLB", "IONQ", "LUNR", "RGTI", "PL", "PLTR", "RDW", "HOOD", "SQ", "SNAP",
-      "ZM", "UBER", "LYFT", "SPOT", "SHOP", "ROKU", "PINS", "ETSY", "DKNG", "DOCU",
-      "TWLO", "OKTA", "ZS", "CRWD", "NET", "DDOG", "TEAM", "U", "PATH", "ASAN",
-      "MDB", "SNOW", "COIN", "AFRM", "SOFI", "RIVN", "LCID", "NIO", "XPEV", "LI",
-      "F", "GM", "TM", "HMC", "STLA", "RACE", "VWAGY", "BMWYY", "DDAIF", "HYMTF",
-      "BA", "CAT", "GE", "MMM", "DE", "LMT", "RTX", "GD", "NOC", "HON",
-      "IBM", "ORCL", "SAP", "NOW", "PANW", "FTNT", "CHKP", "SYMC", "ADSK", "ANSS",
-      "GILD", "REGN", "VRTX", "BIIB", "ILMN", "ISRG", "SYK", "BDX", "BSX", "EW",
-      "CVS", "CI", "ANTM", "HUM", "CNC", "WBA", "DGX", "LH", "TDOC", "RMD",
-      "APD", "ECL", "SHW", "PPG", "DOW", "DD", "LYB", "CTVA", "FMC", "NEM",
-      "GOLD", "AEM", "KL", "KGC", "FCX", "SCCO", "TECK", "VALE", "RIO",
-      "MO", "BTI", "DEO", "STZ", "MNST", "KDP", "GIS", "K", "CPB", "HSY",
-      "CL", "KMB", "EL", "CHD", "CLX", "TGT", "DLTR", "DG", "BBY", "LOW",
-      "TJX", "ROST", "LULU", "GPS", "ANF", "AEO", "URBN", "FL", "NKE", "UA",
-      "MCD", "YUM", "DPZ", "CMG", "DRI", "SYY", "WEN", "QSR", "JACK", "SHAK"
-      // Add more stocks to reach 200 if necessary
+      "TXN", "HON", "UPS", "LIN", "PM", "BMY", "QCOM", "AMD", "AMGN", "SBUX"
     ];
 
-    let bucketList = []; // Top 25 oversold stocks from potentialStocks
-    let stockData = {};  // Stores RSI, MACD, etc. for stocks in bucketList
+    let masterList = []; // Top 50 gainers
+    let bucketList = []; // 20 filtered stocks
+    let stockData = {};  // Stores RSI, MACD, etc. for stocks
 
     // Timer and interval handles
-    let scannerInterval, bucketInterval, futuresInterval, timerInterval;
+    let scannerInterval, bucketInterval, masterInterval, futuresInterval, timerInterval;
     let scannerCountdown = SCANNER_REFRESH_MS / 1000; // in seconds
 
     // DOM Elements
@@ -165,6 +154,7 @@
     const pauseBtn = document.getElementById('pauseBtn');
     const timerDisplay = document.getElementById('timer');
     const darkModeToggle = document.getElementById('darkModeToggle');
+    const statusDisplay = document.getElementById('status');
 
     // Utility: Delay function using Promise
     const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
@@ -179,25 +169,26 @@
         return data;
       } catch (error) {
         console.error(`Error fetching ${url}:`, error);
+        statusDisplay.textContent = `Error fetching data: ${error.message}`;
         return null;
       }
     };
 
-    // Fetch data from Tiingo API with provided endpoint
+    // Fetch data from Tiingo API with CORS proxy (temporary for testing)
     const fetchTiingo = async (endpoint, delayMs = API_DELAY_MS) => {
       if (!tiingoKey) return null;
-      const url = `https://api.tiingo.com${endpoint}&token=${tiingoKey}`;
+      const url = `https://cors-anywhere.herokuapp.com/https://api.tiingo.com${endpoint}&token=${tiingoKey}`;
       return await fetchWithDelay(url, delayMs);
     };
 
-    // Fetch Finnhub futures data (free API) for market sentiment
+    // Fetch Finnhub futures data with corrected symbols
     const fetchFuturesData = async () => {
       const indices = [
-        { symbol: "YM", name: "Dow" },
-        { symbol: "ES", name: "S&P 500" },
-        { symbol: "NQ", name: "NASDAQ" },
-        { symbol: "VIX", name: "VIX" },
-        { symbol: "RTY", name: "Russell 2000" }
+        { symbol: "/YM", name: "Dow" },
+        { symbol: "/ES", name: "S&P 500" },
+        { symbol: "/NQ", name: "NASDAQ" },
+        { symbol: "/VX", name: "VIX" },
+        { symbol: "/RTY", name: "Russell 2000" }
       ];
       for (const { symbol, name } of indices) {
         try {
@@ -205,14 +196,14 @@
           if (data && data.dp !== undefined) {
             const change = parseFloat(data.dp).toFixed(2);
             const color = change >= 0 ? "green" : "red";
-            document.getElementById(`${symbol}-change`).textContent = `${change}%`;
-            document.getElementById(`${symbol}-change`).style.color = color;
+            document.getElementById(`${symbol.replace('/', '')}-change`).textContent = `${change}%`;
+            document.getElementById(`${symbol.replace('/', '')}-change`).style.color = color;
           } else {
-            document.getElementById(`${symbol}-change`).textContent = "N/A";
+            document.getElementById(`${symbol.replace('/', '')}-change`).textContent = "N/A";
           }
         } catch (error) {
           console.error(`Error fetching futures for ${name}:`, error);
-          document.getElementById(`${symbol}-change`).textContent = "Error";
+          document.getElementById(`${symbol.replace('/', '')}-change`).textContent = "Error";
         }
       }
     };
@@ -228,7 +219,7 @@
       }
       const avgGain = gains / 14;
       const avgLoss = losses / 14;
-      const rs = avgGain / (avgLoss || 1); // avoid division by zero
+      const rs = avgGain / (avgLoss || 1);
       return 100 - (100 / (1 + rs));
     };
 
@@ -250,57 +241,79 @@
       return ema;
     };
 
+    // Update master list (top 50 gainers) every MASTER_REFRESH_MS
+    const updateMasterList = async () => {
+      statusDisplay.textContent = "Fetching top gainers...";
+      const quotes = await fetchQuotes(potentialStocks);
+      if (!quotes) {
+        statusDisplay.textContent = "Failed to fetch top gainers.";
+        return;
+      }
+      const scoredStocks = Object.entries(quotes).map(([symbol, quote]) => {
+        const percentChange = quote ? ((quote.close - quote.open) / quote.open * 100).toFixed(2) : 0;
+        return { symbol, percentChange: parseFloat(percentChange) };
+      });
+      scoredStocks.sort((a, b) => b.percentChange - a.percentChange);
+      masterList = scoredStocks.slice(0, 50).map(stock => stock.symbol);
+      if (masterList.length === 0) {
+        statusDisplay.textContent = "No top gainers found.";
+      } else {
+        statusDisplay.textContent = "Top gainers updated.";
+      }
+    };
+
     // Update bucket list every BUCKET_REFRESH_MS
     const updateBucketList = async () => {
+      if (masterList.length === 0) return;
+      statusDisplay.textContent = "Filtering bucket list...";
       const historicalData = {};
-      const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
-        .toISOString()
-        .split('T')[0]; // 30 days ago
-      // Fetch historical data in batches of 100 symbols
-      for (let i = 0; i < potentialStocks.length; i += 100) {
-        const batch = potentialStocks.slice(i, i + 100).join(',');
-        const data = await fetchTiingo(`/tiingo/daily/prices?tickers=${batch}&startDate=${startDate}`, API_DELAY_MS);
-        if (data) {
-          data.forEach(item => {
-            const symbol = item.ticker;
-            if (!historicalData[symbol]) historicalData[symbol] = [];
-            historicalData[symbol].push(item.close);
-          });
+      const startDate = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]; // 30 days ago
+      for (let i = 0; i < masterList.length; i += 5) {
+        const batchSymbols = masterList.slice(i, i + 5);
+        for (const symbol of batchSymbols) {
+          const data = await fetchTiingo(`/tiingo/daily/${symbol}/prices?startDate=${startDate}`);
+          if (data) {
+            historicalData[symbol] = data.map(item => item.close);
+          }
         }
+        await delay(API_DELAY_MS);
       }
-      // Calculate RSI and filter oversold stocks (RSI < 30)
-      const rsiData = {};
-      for (const [symbol, prices] of Object.entries(historicalData)) {
-        if (prices.length >= 15) {
+      const filteredStocks = [];
+      for (const symbol of masterList) {
+        const prices = historicalData[symbol];
+        if (prices && prices.length >= 26) {
           const rsi = calculateRSI(prices.slice(-15));
-          if (rsi && rsi < 30) {
-            rsiData[symbol] = rsi;
+          const macd = calculateMACD(prices.slice(-26));
+          if (rsi && rsi < 70 && macd > 0) { // Exclude overbought (RSI > 70) and ensure positive momentum
+            filteredStocks.push({ symbol, rsi, macd });
           }
         }
       }
-      // Sort by RSI and select top 25
-      const sortedStocks = Object.entries(rsiData).sort((a, b) => a[1] - b[1]);
-      bucketList = sortedStocks.slice(0, 25).map(([symbol]) => symbol);
+      filteredStocks.sort((a, b) => b.macd - a.macd); // Favor stronger momentum
+      bucketList = filteredStocks.slice(0, 20).map(stock => stock.symbol);
       if (bucketList.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="9">No oversold stocks found.</td></tr>';
+        tableBody.innerHTML = '<tr><td colspan="9">No potential gappers found.</td></tr>';
+        statusDisplay.textContent = "No potential gappers found.";
       } else {
         bucketList.forEach(symbol => {
-          const prices = historicalData[symbol];
           stockData[symbol] = {
-            rsi: calculateRSI(prices.slice(-15)),
-            macd: calculateMACD(prices.slice(-26))
+            rsi: calculateRSI(historicalData[symbol].slice(-15)),
+            macd: calculateMACD(historicalData[symbol].slice(-26))
           };
         });
+        statusDisplay.textContent = "Bucket list updated.";
       }
     };
 
     // Update scanner dashboard every SCANNER_REFRESH_MS
     const updateScanner = async () => {
       if (bucketList.length === 0) return;
+      statusDisplay.textContent = "Updating dashboard...";
       const quotes = await fetchQuotes(bucketList);
       const newsList = await fetchNews(bucketList);
       const top5 = selectTop5(quotes, newsList);
       renderTable(top5, quotes, newsList);
+      statusDisplay.textContent = "Dashboard updated.";
     };
 
     // Fetch latest quotes in batches of 5
@@ -308,12 +321,11 @@
       const quotes = {};
       for (let i = 0; i < symbols.length; i += 5) {
         const batchSymbols = symbols.slice(i, i + 5);
-        const batch = batchSymbols.join(',');
-        const data = await fetchTiingo(`/tiingo/daily/prices?tickers=${batch}`, API_DELAY_MS);
-        if (data) {
-          data.forEach(item => {
-            quotes[item.ticker] = item;
-          });
+        for (const symbol of batchSymbols) {
+          const data = await fetchTiingo(`/tiingo/daily/${symbol}/prices`);
+          if (data && data.length > 0) {
+            quotes[symbol] = data[0];
+          }
         }
         await delay(API_DELAY_MS);
       }
@@ -325,33 +337,34 @@
       const newsList = {};
       for (let i = 0; i < symbols.length; i += 5) {
         const batchSymbols = symbols.slice(i, i + 5);
-        const batch = batchSymbols.join(',');
-        const data = await fetchTiingo(`/tiingo/news?tickers=${batch}`, API_DELAY_MS);
-        if (data) {
-          data.forEach(article => {
-            newsList[article.ticker] = article.title;
-          });
+        for (const symbol of batchSymbols) {
+          const data = await fetchTiingo(`/tiingo/news?tickers=${symbol}`);
+          if (data && data.length > 0) {
+            newsList[symbol] = data[0].title;
+          }
         }
         await delay(API_DELAY_MS);
       }
       return newsList;
     };
 
-    // Select top 5 stocks based on a scoring mechanism
+    // Select top 5 stocks based on scoring
     const selectTop5 = (quotes, newsList) => {
       const scoredStocks = bucketList.map(symbol => {
         const quote = quotes[symbol];
         const percentChange = quote ? ((quote.close - quote.open) / quote.open * 100).toFixed(2) : 0;
-        const rsi = stockData[symbol].rsi;
-        // Scoring: favor high percent change and low RSI
-        const score = parseFloat(percentChange) + (30 - rsi);
+        const rsi = stockData[symbol].rsi || 0;
+        const macd = stockData[symbol].macd || 0;
+        const volume = quote ? quote.volume : 0;
+        const news = newsList[symbol] ? 1 : 0; // Simple positive news flag
+        const score = (parseFloat(percentChange) * 0.4) + (macd * 0.3) + (volume * 0.00001) + (news * 10) - (rsi * 0.1);
         return { symbol, score, percentChange };
       });
       scoredStocks.sort((a, b) => b.score - a.score);
       return scoredStocks.slice(0, 5).map(stock => stock.symbol);
     };
 
-    // Render the table using a Document Fragment for efficient DOM updates
+    // Render the table using a Document Fragment
     const renderTable = (top5, quotes, newsList) => {
       tableBody.innerHTML = '';
       if (top5.length === 0) {
@@ -383,7 +396,7 @@
         row.appendChild(createCell(volume, "Volume"));
         row.appendChild(createCell(news || 'No news', "News Headline"));
         row.appendChild(createCell("Moderate", "Movement Strength")); // Placeholder
-        row.appendChild(createCell("Hours", "Duration Potential"));     // Placeholder
+        row.appendChild(createCell("Hours", "Duration Potential"));   // Placeholder
         row.appendChild(createCell(warning, "Warning"));
 
         fragment.appendChild(row);
@@ -417,9 +430,9 @@
       startBtn.style.display = 'none';
       pauseBtn.style.display = 'inline-block';
       tableBody.innerHTML = '<tr><td colspan="9">Loading...</td></tr>';
-      // Initialize scanner and futures data
-      updateBucketList().then(updateScanner);
+      updateMasterList().then(updateBucketList).then(updateScanner);
       fetchFuturesData();
+      masterInterval = setInterval(updateMasterList, MASTER_REFRESH_MS);
       bucketInterval = setInterval(updateBucketList, BUCKET_REFRESH_MS);
       scannerInterval = setInterval(updateScanner, SCANNER_REFRESH_MS);
       futuresInterval = setInterval(fetchFuturesData, FUTURES_REFRESH_MS);
@@ -428,6 +441,7 @@
     });
 
     pauseBtn.addEventListener('click', () => {
+      clearInterval(masterInterval);
       clearInterval(bucketInterval);
       clearInterval(scannerInterval);
       clearInterval(futuresInterval);
@@ -437,6 +451,7 @@
       pauseBtn.style.display = 'none';
       timerDisplay.textContent = 'Scanner paused';
       tableBody.innerHTML = '<tr><td colspan="9" class="error">Scanner paused. Click "Start" to resume.</td></tr>';
+      statusDisplay.textContent = '';
     });
 
     darkModeToggle.addEventListener('click', toggleDarkMode);
